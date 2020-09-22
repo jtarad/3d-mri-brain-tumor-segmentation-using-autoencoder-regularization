@@ -51,9 +51,9 @@ def green_block(inp, filters, data_format='channels_first', name=None):
         The output of the green block. Has no. of channels equal to `filters`.
         The size of the rest of the dimensions remains same as in `inp`.
     """
-    inp_res = Conv3D(
+    inp_res = Conv2D(
         filters=filters,
-        kernel_size=(1, 1, 1),
+        kernel_size=(1, 1),  #, 1),
         strides=1,
         data_format=data_format,
         name=f'Res_{name}' if name else None)(inp)
@@ -65,26 +65,26 @@ def green_block(inp, filters, data_format='channels_first', name=None):
         axis=1 if data_format == 'channels_first' else 0,
         name=f'GroupNorm_1_{name}' if name else None)(inp)
     x = Activation('relu', name=f'Relu_1_{name}' if name else None)(x)
-    x = Conv3D(
+    x = Conv2D(
         filters=filters,
-        kernel_size=(3, 3, 3),
+        kernel_size=(3, 3),  #, 3),
         strides=1,
         padding='same',
         data_format=data_format,
-        name=f'Conv3D_1_{name}' if name else None)(x)
+        name=f'Conv2D_1_{name}' if name else None)(x)
 
     x = GroupNormalization(
         groups=8,
         axis=1 if data_format == 'channels_first' else 0,
         name=f'GroupNorm_2_{name}' if name else None)(x)
     x = Activation('relu', name=f'Relu_2_{name}' if name else None)(x)
-    x = Conv3D(
+    x = Conv2D(
         filters=filters,
-        kernel_size=(3, 3, 3),
+        kernel_size=(3, 3),  #, 3),
         strides=1,
         padding='same',
         data_format=data_format,
-        name=f'Conv3D_2_{name}' if name else None)(x)
+        name=f'Conv2D_2_{name}' if name else None)(x)
 
     out = Add(name=f'Out_{name}' if name else None)([x, inp_res])
     return out
@@ -107,8 +107,8 @@ def sampling(args):
 
 
 def dice_coefficient(y_true, y_pred):
-    intersection = K.sum(K.abs(y_true * y_pred), axis=[-3,-2,-1])
-    dn = K.sum(K.square(y_true) + K.square(y_pred), axis=[-3,-2,-1]) + 1e-8
+    intersection = K.sum(K.abs(y_true * y_pred), axis=[-2,-1])   #axis=[-3,-2,-1])
+    dn = K.sum(K.square(y_true) + K.square(y_pred), axis=[-2,-1]) + 1e-8  #axis=[-3,-2,-1]) + 1e-8
     return K.mean(2 * intersection / dn, axis=[0,1])
 
 
@@ -137,11 +137,11 @@ def loss_gt(e=1e-8):
         
     """
     def loss_gt_(y_true, y_pred):
-        intersection = K.sum(K.abs(y_true * y_pred), axis=[-3,-2,-1])
-        dn = K.sum(K.square(y_true) + K.square(y_pred), axis=[-3,-2,-1]) + e
-        
+        intersection = K.sum(K.abs(y_true * y_pred), axis=[-2,-1])  #axis=[-3,-2,-1])
+        dn = K.sum(K.square(y_true) + K.square(y_pred), axis=[-2,-1]) + e  #axis=[-3,-2,-1]) + e
+
         return - K.mean(2 * intersection / dn, axis=[0,1])
-    
+
     return loss_gt_
 
 def loss_VAE(input_shape, z_mean, z_var, weight_L2=0.1, weight_KL=0.1):
@@ -182,10 +182,12 @@ def loss_VAE(input_shape, z_mean, z_var, weight_L2=0.1, weight_KL=0.1):
         
     """
     def loss_VAE_(y_true, y_pred):
-        c, H, W, D = input_shape
-        n = c * H * W * D
+        #c, H, W, D = input_shape
+        #n = c * H * W * D
+        c, W, D = input_shape
+        n = c * W * D
         
-        loss_L2 = K.mean(K.square(y_true - y_pred), axis=(1, 2, 3, 4)) # original axis value is (1,2,3,4).
+        loss_L2 = K.mean(K.square(y_true - y_pred), axis=(1, 2, 3))  #, 4)) # original axis value is (1,2,3,4).
 
         loss_KL = (1 / n) * K.sum(
             K.exp(z_var) + K.square(z_mean) - 1. - z_var,
@@ -196,7 +198,7 @@ def loss_VAE(input_shape, z_mean, z_var, weight_L2=0.1, weight_KL=0.1):
 
     return loss_VAE_
 
-def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1, weight_KL=0.1, dice_e=1e-8):
+def build_model(input_shape=(110, 64, 64), output_channels=3, weight_L2=0.1, weight_KL=0.1, dice_e=1e-8):
     """
     build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1, weight_KL=0.1)
     -------------------------------------------
@@ -227,10 +229,12 @@ def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1
     `model`: A keras.models.Model instance
         The created model.
     """
-    c, H, W, D = input_shape
-    assert len(input_shape) == 4, "Input shape must be a 4-tuple"
-    assert (c % 4) == 0, "The no. of channels must be divisible by 4"
-    assert (H % 16) == 0 and (W % 16) == 0 and (D % 16) == 0, \
+    #c, H, W, D = input_shape
+    c, W, D = input_shape
+    assert len(input_shape) == 3, "Input shape must be a 4-tuple"
+    #assert (c % 4) == 0, "The no. of channels must be divisible by 4"
+    #assert (H % 16) == 0 
+    assert (W % 16) == 0 and (D % 16) == 0, \
         "All the input dimensions must be divisible by 16"
 
 
@@ -242,22 +246,22 @@ def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1
     inp = Input(input_shape)
 
     ## The Initial Block
-    x = Conv3D(
+    x = Conv2D(
         filters=32,
-        kernel_size=(3, 3, 3),
+        kernel_size=(3, 3),  #, 3),
         strides=1,
         padding='same',
         data_format='channels_first',
         name='Input_x1')(inp)
 
     ## Dropout (0.2)
-    x = SpatialDropout3D(0.2, data_format='channels_first')(x)
+    x = SpatialDropout2D(0.2, data_format='channels_first')(x)
 
     ## Green Block x1 (output filters = 32)
     x1 = green_block(x, 32, name='x1')
-    x = Conv3D(
+    x = Conv2D(
         filters=32,
-        kernel_size=(3, 3, 3),
+        kernel_size=(3, 3),  #, 3),
         strides=2,
         padding='same',
         data_format='channels_first',
@@ -266,9 +270,9 @@ def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1
     ## Green Block x2 (output filters = 64)
     x = green_block(x, 64, name='Enc_64_1')
     x2 = green_block(x, 64, name='x2')
-    x = Conv3D(
+    x = Conv2D(
         filters=64,
-        kernel_size=(3, 3, 3),
+        kernel_size=(3, 3),  #, 3),
         strides=2,
         padding='same',
         data_format='channels_first',
@@ -277,9 +281,9 @@ def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1
     ## Green Blocks x2 (output filters = 128)
     x = green_block(x, 128, name='Enc_128_1')
     x3 = green_block(x, 128, name='x3')
-    x = Conv3D(
+    x = Conv2D(
         filters=128,
-        kernel_size=(3, 3, 3),
+        kernel_size=(3, 3),  #, 3),
         strides=2,
         padding='same',
         data_format='channels_first',
@@ -299,13 +303,13 @@ def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1
     # -------------------------------------------------------------------------
 
     ### Green Block x1 (output filters=128)
-    x = Conv3D(
+    x = Conv2D(
         filters=128,
-        kernel_size=(1, 1, 1),
+        kernel_size=(1, 1),  #, 1),
         strides=1,
         data_format='channels_first',
         name='Dec_GT_ReduceDepth_128')(x4)
-    x = UpSampling3D(
+    x = UpSampling2D(
         size=2,
         data_format='channels_first',
         name='Dec_GT_UpSample_128')(x)
@@ -313,13 +317,13 @@ def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1
     x = green_block(x, 128, name='Dec_GT_128')
 
     ### Green Block x1 (output filters=64)
-    x = Conv3D(
+    x = Conv2D(
         filters=64,
-        kernel_size=(1, 1, 1),
+        kernel_size=(1, 1),  #, 1),
         strides=1,
         data_format='channels_first',
         name='Dec_GT_ReduceDepth_64')(x)
-    x = UpSampling3D(
+    x = UpSampling2D(
         size=2,
         data_format='channels_first',
         name='Dec_GT_UpSample_64')(x)
@@ -327,13 +331,13 @@ def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1
     x = green_block(x, 64, name='Dec_GT_64')
 
     ### Green Block x1 (output filters=32)
-    x = Conv3D(
+    x = Conv2D(
         filters=32,
-        kernel_size=(1, 1, 1),
+        kernel_size=(1, 1),  #, 1),
         strides=1,
         data_format='channels_first',
         name='Dec_GT_ReduceDepth_32')(x)
-    x = UpSampling3D(
+    x = UpSampling2D(
         size=2,
         data_format='channels_first',
         name='Dec_GT_UpSample_32')(x)
@@ -341,18 +345,18 @@ def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1
     x = green_block(x, 32, name='Dec_GT_32')
 
     ### Blue Block x1 (output filters=32)
-    x = Conv3D(
+    x = Conv2D(
         filters=32,
-        kernel_size=(3, 3, 3),
+        kernel_size=(3, 3),  #, 3),
         strides=1,
         padding='same',
         data_format='channels_first',
         name='Input_Dec_GT_Output')(x)
 
     ### Output Block
-    out_GT = Conv3D(
+    out_GT = Conv2D(
         filters=output_channels,  # No. of tumor classes is 3
-        kernel_size=(1, 1, 1),
+        kernel_size=(1, 1),  #, 1),
         strides=1,
         data_format='channels_first',
         activation='sigmoid',
@@ -364,13 +368,13 @@ def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1
     ### VD Block (Reducing dimensionality of the data)
     x = GroupNormalization(groups=8, axis=1, name='Dec_VAE_VD_GN')(x4)
     x = Activation('relu', name='Dec_VAE_VD_relu')(x)
-    x = Conv3D(
+    x = Conv2D(
         filters=16,
-        kernel_size=(3, 3, 3),
+        kernel_size=(3, 3),  #, 3),
         strides=2,
         padding='same',
         data_format='channels_first',
-        name='Dec_VAE_VD_Conv3D')(x)
+        name='Dec_VAE_VD_Conv2D')(x)
 
     # Not mentioned in the paper, but the author used a Flattening layer here.
     x = Flatten(name='Dec_VAE_VD_Flatten')(x)
@@ -382,12 +386,12 @@ def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1
     x = Lambda(sampling, name='Dec_VAE_VDraw_Sampling')([z_mean, z_var])
 
     ### VU Block (Upsizing back to a depth of 256)
-    x = Dense((c//4) * (H//16) * (W//16) * (D//16))(x)
+    x = Dense((c//11) * (W//16) * (D//16))(x)
     x = Activation('relu')(x)
-    x = Reshape(((c//4), (H//16), (W//16), (D//16)))(x)
-    x = Conv3D(
+    x = Reshape(((c//11), (W//16), (D//16)))(x)
+    x = Conv2D(
         filters=256,
-        kernel_size=(1, 1, 1),
+        kernel_size=(1, 1),  #, 1),
         strides=1,
         data_format='channels_first',
         name='Dec_VAE_ReduceDepth_256')(x)
@@ -397,57 +401,57 @@ def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1
         name='Dec_VAE_UpSample_256')(x)
 
     ### Green Block x1 (output filters=128)
-    x = Conv3D(
+    x = Conv2D(
         filters=128,
-        kernel_size=(1, 1, 1),
+        kernel_size=(1, 1),  #, 1),
         strides=1,
         data_format='channels_first',
         name='Dec_VAE_ReduceDepth_128')(x)
-    x = UpSampling3D(
+    x = UpSampling2D(
         size=2,
         data_format='channels_first',
         name='Dec_VAE_UpSample_128')(x)
     x = green_block(x, 128, name='Dec_VAE_128')
 
     ### Green Block x1 (output filters=64)
-    x = Conv3D(
+    x = Conv2D(
         filters=64,
-        kernel_size=(1, 1, 1),
+        kernel_size=(1, 1),  #, 1),
         strides=1,
         data_format='channels_first',
         name='Dec_VAE_ReduceDepth_64')(x)
-    x = UpSampling3D(
+    x = UpSampling2D(
         size=2,
         data_format='channels_first',
         name='Dec_VAE_UpSample_64')(x)
     x = green_block(x, 64, name='Dec_VAE_64')
 
     ### Green Block x1 (output filters=32)
-    x = Conv3D(
+    x = Conv2D(
         filters=32,
-        kernel_size=(1, 1, 1),
+        kernel_size=(1, 1),  #, 1),
         strides=1,
         data_format='channels_first',
         name='Dec_VAE_ReduceDepth_32')(x)
-    x = UpSampling3D(
+    x = UpSampling2D(
         size=2,
         data_format='channels_first',
         name='Dec_VAE_UpSample_32')(x)
     x = green_block(x, 32, name='Dec_VAE_32')
 
     ### Blue Block x1 (output filters=32)
-    x = Conv3D(
+    x = Conv2D(
         filters=32,
-        kernel_size=(3, 3, 3),
+        kernel_size=(3, 3),  #, 3),
         strides=1,
         padding='same',
         data_format='channels_first',
         name='Input_Dec_VAE_Output')(x)
 
     ### Output Block
-    out_VAE = Conv3D(
+    out_VAE = Conv2D(
         filters=4,
-        kernel_size=(1, 1, 1),
+        kernel_size=(1, 1),  #, 1),
         strides=1,
         data_format='channels_first',
         name='Dec_VAE_Output')(x) 
