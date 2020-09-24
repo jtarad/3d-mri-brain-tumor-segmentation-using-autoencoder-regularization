@@ -18,7 +18,7 @@ except ImportError:
     urllib.request.urlretrieve(url, "group_norm.py")
     from group_norm import GroupNormalization
 
-class CustomModel(keras.Model):
+class CustomModel(Model):
   def train_step(self, data):
           # Unpack the data. Its structure depends on your model and
           # on what you pass to `fit()`.
