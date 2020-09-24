@@ -462,8 +462,7 @@ def build_model(input_shape=(110, 64, 64), output_channels=3, weight_L2=0.1, wei
     model.compile(
         Adam(lr=1e-4),
         [loss_gt(dice_e), loss_VAE(input_shape, z_mean, z_var, weight_L2=weight_L2, weight_KL=weight_KL)],
-        metrics=[dice_coefficient],
-        experimental_run_tf_function=False
+        metrics=[dice_coefficient]
     )
 
     return model
