@@ -18,6 +18,31 @@ except ImportError:
     urllib.request.urlretrieve(url, "group_norm.py")
     from group_norm import GroupNormalization
 
+class CustomModel(keras.Model):
+  def train_step(self, data):
+          # Unpack the data. Its structure depends on your model and
+          # on what you pass to `fit()`.
+          x, y = data
+  
+          with tf.GradientTape() as tape:
+              y_pred = self(x, training=True)  # Forward pass
+              
+              mask_y = (y != -1)
+              y = y[mask_y]
+              y_pred = y_pred[mask_y]
+              # Compute the loss value
+              # (the loss function is configured in `compile()`)
+              loss = self.compiled_loss(y, y_pred, regularization_losses=self.losses)
+  
+          # Compute gradients
+          trainable_vars = self.trainable_variables
+          gradients = tape.gradient(loss, trainable_vars)
+          # Update weights
+          self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+          # Update metrics (includes the metric that tracks the loss)
+          self.compiled_metrics.update_state(y, y_pred)
+          # Return a dict mapping metric names to current value
+          return {m.name: m.result() for m in self.metrics}
 
 def green_block(inp, filters, data_format='channels_first', name=None):
     """
@@ -458,7 +483,7 @@ def build_model(input_shape=(110, 64, 64), output_channels=3, weight_L2=0.1, wei
 
     # Build and Compile the model
     out = out_GT
-    model = Model(inp, outputs=[out, out_VAE])  # Create the model
+    model = CustomModel(inp, outputs=[out, out_VAE])  # Create the model
     model.compile(
         Adam(lr=1e-4),
         [loss_gt(dice_e), loss_VAE(input_shape, z_mean, z_var, weight_L2=weight_L2, weight_KL=weight_KL)],
